@@ -26,7 +26,7 @@ Ask your AI assistant questions like:
 | `authenticate_coros` | Log in with email and password — token stored securely in keyring |
 | `authenticate_coros_mobile` | Log in to the mobile API only (useful for sleep data troubleshooting) |
 | `check_coros_auth` | Check whether a valid auth token is present |
-| `get_daily_metrics` | Fetch daily metrics (HRV, resting HR, training load, VO2max, stamina, and more) for n weeks (default: 4) |
+| `get_training_analysis` | Fetch full training analysis: daily metrics (HRV, resting HR, training load, VO2max, stamina), weekly summaries, sport statistics, intensity breakdown, and more. Configurable 1–24 weeks (default: 4) |
 | `get_sleep_data` | Fetch nightly sleep stages (deep, light, REM, awake) and sleep HR for n weeks (default: 4) |
 | `list_activities` | List activities for a date range with summary metrics |
 | `get_activity_detail` | Fetch full detail for a single activity (laps, HR zones, power zones) |
@@ -167,31 +167,26 @@ Check whether valid web and mobile tokens are stored and how long the web token 
 
 Returns: `authenticated`, `user_id`, `region`, `expires_in_hours`, `mobile_authenticated`, `mobile_token_status`
 
-### `get_daily_metrics`
+### `get_training_analysis`
 
-Fetch daily metrics for a configurable number of weeks (default: 4).
+Fetch the full Coros training analysis ("数据分析") for 1–24 weeks (default: 4).
 
 ```json
-{ "weeks": 4 }
+{ "weeks": 4, "include_daily": true, "include_summary": false }
 ```
 
-Returns: `records` (list), `count`, `date_range`
+Returns:
 
-Each record includes:
-
-| Field | Source | Description |
-|-------|--------|-------------|
-| `date` | — | Date (YYYYMMDD) |
-| `avg_sleep_hrv` | dayDetail | Nightly HRV (RMSSD ms) |
-| `baseline` | dayDetail | HRV rolling baseline |
-| `rhr` | dayDetail | Resting heart rate (bpm) |
-| `training_load` | dayDetail | Daily training load |
-| `training_load_ratio` | dayDetail | Acute/chronic training load ratio |
-| `tired_rate` | dayDetail | Fatigue rate |
-| `ati` / `cti` | dayDetail | Acute / chronic training index |
-| `distance` / `duration` | dayDetail | Distance (m) / duration (s) |
-| `vo2max` | analyse (merge) | VO2 Max (last ~28 days) |
-| `lthr` | analyse (merge) | Lactate threshold heart rate (bpm) |
+| Field | Description |
+|-------|-------------|
+| `daily_records` | Per-day 35-field records (HRV, RHR, LTHR, training load, fatigue, VO2max, stamina, etc.) |
+| `week_list` | 12 weekly summaries with training load and recommendations |
+| `records` | Personal records (distance, duration, training load) |
+| `sport_statistic` | Per-sport aggregated stats |
+| `tl_intensity` | Weekly training load intensity breakdown (low/medium/high %) |
+| `sport_data_summary` | Total activity count and model validity |
+| `training_week_stages` | Training phase stages |
+| `summary_info` | 10 distribution charts (only if `include_summary=True`)
 | `ltsp` | analyse (merge) | Lactate threshold pace (s/km) |
 | `stamina_level` | analyse (merge) | Base fitness level |
 | `stamina_level_7d` | analyse (merge) | 7-day fitness trend |
