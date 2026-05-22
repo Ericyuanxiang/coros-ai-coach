@@ -1111,6 +1111,61 @@ async def get_training_library(region: str = "cn", locale: str = "zh-CN") -> dic
 
 
 # ---------------------------------------------------------------------------
+# Tool: import_training_program
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def import_training_program(linked_id: str, category: str = "workout", region_id: int = 1) -> dict:
+    """Import a public training program from the COROS library into your account.
+
+    This copies a workout or training plan from the official COROS training
+    library into your personal workout library, where it can be synced to
+    your watch and scheduled on your training calendar.
+
+    Use get_training_library first to browse available programs.  Each
+    program in the catalog has a linked_id — pass that as the linked_id
+    parameter here.
+
+    Parameters
+    ----------
+    linked_id : str
+        Training Hub program ID.  Use the linked_id field from
+        get_training_library results, NOT program_id (the MongoDB _id).
+        For example: "476133458610143331"
+    category : str
+        "workout" for single workouts, "plan" for multi-week training plans.
+        Default: "workout".
+    region_id : int
+        Region mapping: 1 = China, 2 = US, 3 = EU.  Default: 1.
+
+    Returns
+    -------
+    dict with keys: imported_id, name, category, total_exercises,
+    estimated_time_s
+
+    Notes
+    -----
+    After importing, use list_workouts to find the new program by its
+    imported_id, and schedule_workout to add it to your calendar.
+    """
+    auth = await _get_auth()
+    if auth is None:
+        return {"error": "Not authenticated. Set COROS_EMAIL and COROS_PASSWORD in .env or call authenticate_coros."}
+
+    if category not in ("workout", "plan"):
+        return {"error": f"category must be 'workout' or 'plan', got '{category}'"}
+
+    try:
+        result = await _run_with_auth(
+            coros_api.import_training_program,
+            auth, linked_id, category, region_id,
+        )
+        return result
+    except Exception as exc:
+        return _tool_error(exc)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

@@ -1977,3 +1977,75 @@ async def fetch_training_library(region: str = "cn", locale: str = "zh-CN") -> l
         ))
 
     return programs
+
+
+async def import_training_program(
+    auth: StoredAuth,
+    linked_id: str,
+    category: str = "workout",
+    region_id: int = 1,
+) -> dict:
+    """Import a public training program from the COROS library into the user's account.
+
+    Parameters
+    ----------
+    auth : StoredAuth
+        Authenticated session.
+    linked_id : str
+        Training Hub program ID (linked_id field from fetch_training_library).
+    category : str
+        "workout" for single workouts, "plan" for multi-week training plans.
+    region_id : int
+        Region mapping: 1=CN, 2=US, 3=EU. Default: 1.
+
+    Returns
+    -------
+    dict with keys: imported_id, name, category, total_exercises, estimated_time_s
+    """
+    base = _base_url(auth.region)
+
+    if category == "plan":
+        detail_path = "/training/plan/detail"
+        copy_path = "/training/plan/copy"
+    else:
+        detail_path = "/training/program/detail"
+        copy_path = "/training/program/copy"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Step 1: fetch program detail (GET with query params)
+        detail_params = {"id": linked_id, "region": region_id}
+        if category != "plan":
+            detail_params["supportRestExercise"] = 1
+
+        resp = await client.get(
+            f"{base}{detail_path}",
+            params=detail_params,
+            headers=_auth_headers(auth),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        _check_response(body, f"{category} detail")
+
+        detail_data = body["data"]
+        detail_id = detail_data["id"]
+
+        # Step 2: import (copy) the program into user's account
+        resp2 = await client.post(
+            f"{base}{copy_path}",
+            params={"id": detail_id, "region": region_id},
+            json=detail_data,
+            headers=_auth_headers(auth),
+        )
+        resp2.raise_for_status()
+        body2 = resp2.json()
+        _check_response(body2, f"{category} import")
+
+        imported = body2["data"]
+
+    return {
+        "imported_id": imported.get("id"),
+        "name": imported.get("name", imported.get("title", "")),
+        "category": category,
+        "total_exercises": imported.get("exerciseNum") if imported.get("exerciseNum") is not None else len(imported.get("exercises", [])),
+        "estimated_time_s": imported.get("estimatedTime"),
+    }
