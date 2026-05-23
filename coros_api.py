@@ -1992,6 +1992,7 @@ async def import_training_program(
     linked_id: str,
     category: str = "workout",
     region_id: int = 1,
+    name: Optional[str] = None,
 ) -> dict:
     """Import a public training program from the COROS library into the user's account.
 
@@ -2005,12 +2006,32 @@ async def import_training_program(
         "workout" for single workouts, "plan" for multi-week training plans.
     region_id : int
         Region mapping: 1=CN, 2=US, 3=EU. Default: 1.
+    name : Optional[str]
+        Custom display name. If omitted, the API assigns an internal code
+        like "W30281".  Pass the title from get_training_library results
+        for a human-readable name.
 
     Returns
     -------
     dict with keys: imported_id, name, category, total_exercises, estimated_time_s
     """
     base = _base_url(auth.region)
+
+    # Auto-resolve the human-readable title from the public catalog so
+    # imported programs get a real name ("经典VO2max间歇训练") instead of
+    # an internal code ("W30050").
+    if name is None:
+        try:
+            catalog = await fetch_training_library(
+                "cn" if auth.region in ("cn", "asia") else auth.region,
+                "zh-CN",
+            )
+            for p in catalog:
+                if p.linked_id == linked_id:
+                    name = p.title
+                    break
+        except Exception:
+            pass  # best-effort; if catalog lookup fails, keep name=None
 
     if category == "plan":
         detail_path = "/training/plan/detail"
@@ -2036,6 +2057,11 @@ async def import_training_program(
 
         detail_data = body["data"]
         detail_id = detail_data["id"]
+
+        # Inject custom name so the imported program has a readable title
+        # instead of the API-generated internal code like "W30281".
+        if name is not None:
+            detail_data["name"] = name
 
         # Step 2: import (copy) the program into user's account
         resp2 = await client.post(

@@ -1115,7 +1115,7 @@ async def get_training_library(region: str = "cn", locale: str = "zh-CN") -> dic
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def import_training_program(linked_id: str, category: str = "workout", region_id: int = 1) -> dict:
+async def import_training_program(linked_id: str, category: str = "workout", region_id: int = 1, name: str | None = None) -> dict:
     """Import a public training program from the COROS library into your account.
 
     This copies a workout or training plan from the official COROS training
@@ -1137,6 +1137,11 @@ async def import_training_program(linked_id: str, category: str = "workout", reg
         Default: "workout".
     region_id : int
         Region mapping: 1 = China, 2 = US, 3 = EU.  Default: 1.
+    name : str or None
+        Custom display name for the imported program.  Pass the title from
+        get_training_library results to get a human-readable name like
+        "20min全力骑行" instead of the internal code "W30281".
+        Default: None (API assigns automatic internal code).
 
     Returns
     -------
@@ -1158,7 +1163,7 @@ async def import_training_program(linked_id: str, category: str = "workout", reg
     try:
         result = await _run_with_auth(
             coros_api.import_training_program,
-            auth, linked_id, category, region_id,
+            auth, linked_id, category, region_id, name,
         )
         return result
     except Exception as exc:
