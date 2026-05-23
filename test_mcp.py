@@ -2,9 +2,9 @@
 import subprocess, json, time
 
 proc = subprocess.Popen(
-    ["C:/coros-mcp/coros-mcp-main/.venv/Scripts/python.exe", "server.py"],
+    ["C:/coros-mcp/coros-ai-coach/.venv/Scripts/python.exe", "server.py"],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    text=True, cwd="C:/coros-mcp/coros-mcp-main",
+    text=True, cwd="C:/coros-mcp/coros-ai-coach",
 )
 
 def send(req):

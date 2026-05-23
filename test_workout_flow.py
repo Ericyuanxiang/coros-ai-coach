@@ -1,9 +1,9 @@
 """Step 1-4: Create run workout, schedule, verify, cleanup."""
 import asyncio, json, sys
-sys.path.insert(0, "C:/coros-mcp/coros-mcp-main")
+sys.path.insert(0, "C:/coros-mcp/coros-ai-coach")
 from dotenv import load_dotenv
 import os
-load_dotenv(os.path.join(os.path.dirname("C:/coros-mcp/coros-mcp-main/server.py"), ".env"))
+load_dotenv(os.path.join(os.path.dirname("C:/coros-mcp/coros-ai-coach/server.py"), ".env"))
 
 import coros_api
 import httpx
