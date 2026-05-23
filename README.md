@@ -1,8 +1,23 @@
 # coros-ai-coach — 高驰AI教练
 
+[中文文档](README_zh.md)
+
 An MCP server that lets AI assistants access your complete Coros Training Hub data, create structured workouts, and manage your training calendar — all through natural language.
 
 No API key. No official API. Your credentials stay local, encrypted in your system keyring. The server talks directly to Coros using the same endpoints the web app and mobile app use.
+
+## About
+
+**coros-ai-coach（高驰AI教练）** is an MCP (Model Context Protocol) server that bridges AI assistants with the COROS Training Hub ecosystem. It wraps the unofficial COROS API — the same endpoints used by the COROS web app and mobile app — into 22 MCP tools that any AI assistant can call.
+
+Most COROS MCP servers stop at basic data retrieval (sleep, HRV, activities). coros-ai-coach goes several steps further:
+
+- **Training plan library** — Browse and import 200+ official COROS programs from coaches and elite athletes. Filter by sport, difficulty, and category across three regions (CN/US/EU) with full i18n support.
+- **Workout builder** — Create running workouts with 3 heart rate zone models (MaxHR, %HRR, %LTHR), pace targets, power, cadence, and equivalent pace. Cycling workouts with wattage zones. Strength circuits from the COROS exercise catalogue. All with interval/repeat support.
+- **Calendar management** — Full CRUD on your training calendar: view, schedule, reschedule, remove. Plus aggregated volume summaries.
+- **Daily health** — Steps, calories, stress levels from the mobile API — data not available through the Training Hub web API.
+
+The server authenticates with your COROS credentials (MD5-hashed for web, AES-128-CBC encrypted for mobile — key reverse-engineered from the COROS Android APK). Tokens are stored in your system keyring and auto-refresh transparently. No data ever leaves your machine except to COROS servers.
 
 ## What you can do
 
