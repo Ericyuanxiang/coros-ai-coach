@@ -1,1 +1,1 @@
-"""Coros Coach credential storage."""
+"""Coros AI Coach credential storage."""

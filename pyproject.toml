@@ -1,7 +1,7 @@
 [project]
-name = "coros-coach"
+name = "coros-ai-coach"
 version = "0.1"
-description = "AI-powered Coros Training Hub companion — sleep, HRV, training analysis, workout builder, and training plan library"
+description = "高驰AI教练 — AI-powered Coros Training Hub companion: sleep, HRV, training analysis, workout builder, and training plan library"
 requires-python = ">=3.11"
 dependencies = [
     "cryptography",
@@ -18,7 +18,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-coros-coach = "cli:main"
+coros-ai-coach = "cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]

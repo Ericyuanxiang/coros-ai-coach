@@ -1,4 +1,4 @@
-"""CLI commands for Coros Coach."""
+"""CLI commands for Coros AI Coach."""
 import asyncio
 import getpass
 import sys
@@ -30,7 +30,7 @@ def _prompt_credentials() -> tuple[str, str, str]:
 
 def cmd_auth() -> int:
     """Authenticate with Coros credentials and store token in keyring."""
-    print("Coros Coach — Authentication")
+    print("Coros AI Coach — Authentication")
     print()
 
     if is_keyring_available():
@@ -54,7 +54,7 @@ def cmd_auth() -> int:
 
 def cmd_auth_web() -> int:
     """Authenticate with Coros web API only (no mobile token)."""
-    print("Coros Coach — Web API Authentication")
+    print("Coros AI Coach — Web API Authentication")
     print()
 
     email, password, region = _prompt_credentials()
@@ -72,7 +72,7 @@ def cmd_auth_web() -> int:
 
 def cmd_auth_mobile() -> int:
     """Authenticate with Coros mobile API only."""
-    print("Coros Coach — Mobile API Authentication")
+    print("Coros AI Coach — Mobile API Authentication")
     print()
 
     email, password, region = _prompt_credentials()
@@ -107,15 +107,15 @@ def cmd_auth_status() -> int:
         elif auth.mobile_login_payload:
             print("⚠ Mobile API — token expired (can auto-refresh)")
         else:
-            print("✗ Mobile API — not authenticated (run 'coros-coach auth' or 'coros-coach auth-mobile')")
+            print("✗ Mobile API — not authenticated (run 'coros-ai-coach auth' or 'coros-ai-coach auth-mobile')")
 
         return 0
     else:
         result = get_token()
         if result.success:
-            print("⚠ Token found but may be expired. Run 'coros-coach auth' to re-authenticate.")
+            print("⚠ Token found but may be expired. Run 'coros-ai-coach auth' to re-authenticate.")
         else:
-            print("✗ Not authenticated. Run 'coros-coach auth' to log in.")
+            print("✗ Not authenticated. Run 'coros-ai-coach auth' to log in.")
         return 1
 
 
@@ -139,16 +139,16 @@ def cmd_serve() -> int:
 
 def cmd_help() -> int:
     print(
-        """Coros Coach — CLI
+        """Coros AI Coach — CLI
 
 Usage:
-  coros-coach serve         Start the MCP server (used by Claude Code)
-  coros-coach auth          Authenticate with your Coros account (web + mobile)
-  coros-coach auth-web      Authenticate web API only (no sleep data)
-  coros-coach auth-mobile   Authenticate mobile API only (sleep data)
-  coros-coach auth-status   Check status of both tokens
-  coros-coach auth-clear    Remove stored token
-  coros-coach help          Show this help message
+  coros-ai-coach serve         Start the MCP server (used by Claude Code)
+  coros-ai-coach auth          Authenticate with your Coros account (web + mobile)
+  coros-ai-coach auth-web      Authenticate web API only (no sleep data)
+  coros-ai-coach auth-mobile   Authenticate mobile API only (sleep data)
+  coros-ai-coach auth-status   Check status of both tokens
+  coros-ai-coach auth-clear    Remove stored token
+  coros-ai-coach help          Show this help message
 """
     )
     return 0
@@ -171,7 +171,7 @@ def main() -> None:
         sys.exit(commands[command]())
     else:
         print(f"Unknown command: {command}")
-        print("Run 'coros-coach help' for usage.")
+        print("Run 'coros-ai-coach help' for usage.")
         sys.exit(1)
 
 
