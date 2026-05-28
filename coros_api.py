@@ -54,8 +54,7 @@ ENDPOINTS = {
     "plan_detail": "/training/plan/detail",       # GET  — single plan detail (used by import)
     "plan_copy": "/training/plan/copy",           # POST — copy plan (used by import)
     "plan_delete": "/training/plan/delete",       # POST — delete plan(s), body: ["id1", ...]
-    "schedule_sum": "/training/schedule/querysum",  # GET — planned calendar aggregates
-    "schedule": "/training/schedule/query",         # GET — planned calendar detail
+    "schedule": "/training/schedule/query",         # GET — planned calendar detail + weekStages
     "schedule_update": "/training/schedule/update", # POST — add workout to calendar
     "exercises": "/training/exercise/query",        # GET — exercise catalogue by sport type
     "account_query": "/account/query",             # GET — user profile, HR zones, maxHr, rhr
@@ -1512,35 +1511,6 @@ async def fetch_schedule(
     return _strip_schedule(body.get("data") or {})
 
 
-# ---------------------------------------------------------------------------
-# Training schedule summary  (/training/schedule/querysum — volume aggregates)
-# ---------------------------------------------------------------------------
-
-async def fetch_schedule_summary(
-    auth: StoredAuth, start_day: str, end_day: str
-) -> dict:
-    """
-    Fetch aggregated training calendar summary for a date range.
-
-    Uses GET /training/schedule/querysum which returns high-level volume
-    aggregates (total duration, training load, session count, weekly
-    breakdowns) without the full workout detail that /schedule/query returns.
-
-    start_day / end_day: YYYYMMDD strings.
-    """
-    params = {"startDate": start_day, "endDate": end_day}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            _base_url(auth.region) + ENDPOINTS["schedule_sum"],
-            params=params,
-            headers=_auth_headers(auth),
-        )
-        resp.raise_for_status()
-        body = resp.json()
-
-    _check_response(body, "schedule summary")
-    return body.get("data", {})
-
 
 _EXERCISE_DROP = frozenset({
     "videoInfos", "videoUrl", "videoUrlArrStr", "coverUrlArrStr",
@@ -1570,8 +1540,8 @@ _ENTITY_DROP = frozenset({
 _TOP_DROP = frozenset({
     "sportDatasInPlan", "sportDatasNotInPlan", "likeTpIds", "starTimestamp",
     "score", "sourceUrl", "inSchedule", "pauseInApp", "access", "authorId",
-    "category", "pbVersion", "version", "thirdPartyId", "maxIdInPlan",
-    "maxPlanProgramId", "weekStages", "subPlans", "userInfos",
+    "category", "pbVersion", "version", "thirdPartyId",
+    "subPlans", "userInfos",
     "type", "unit", "totalDay", "status", "startDay", "createTime",
     "updateTimestamp", "userId",
 })
@@ -1856,38 +1826,48 @@ async def schedule_workout(
     # The app identifies zone labels through `overview: "sid_run_training"`
     # and supporting fields — not through sourceId lookup.
     _EX_FIELD_MAP: dict[str, dict] = {
-        # Maps raw-library field → fallback value when missing
-        "exerciseType": {}, "groupId": {"default": "0"},
-        "hrType": {}, "intensityMultiplier": {"default": 0},
-        "intensityPercent": {}, "intensityPercentExtend": {},
-        "intensityType": {}, "intensityValue": {},
-        "intensityValueExtend": {}, "isGroup": {"default": False},
-        "isIntensityPercent": {"default": True},
-        "name": {}, "overview": {"default": "sid_run_training"},
-        "restType": {"default": 3}, "restValue": {"default": 0},
-        "sets": {"default": 1}, "sourceId": {"default": "0"},
+        # Maps raw-workout field → fallback value when missing
+        "id": {}, "name": {}, "exerciseType": {},
         "sportType": {"default": 1}, "subType": {"default": 0},
-        "targetDisplayUnit": {"default": 0}, "targetType": {"default": 2},
-        "targetValue": {},
-        # Fields the app sets on manual calendar workouts:
+        "intensityType": {}, "intensityValue": {},
+        "intensityValueExtend": {"default": 0},
+        "intensityPercent": {}, "intensityPercentExtend": {},
+        "intensityMultiplier": {"default": 0},
+        "isIntensityPercent": {"default": True}, "isGroup": {"default": False},
+        "targetType": {"default": 2}, "targetValue": {},
+        "targetDisplayUnit": {"default": 0},
+        "hrType": {},
+        "restType": {"default": 3}, "restValue": {"default": 0},
+        "sets": {"default": 1}, "sortNo": {},
+        "groupId": {"default": "0"}, "originId": {"default": "0"},
+        "sourceId": {"default": "0"}, "sourceUrl": {"default": ""},
+        "overview": {"default": ""}, "videoUrl": {"default": ""},
         "intensityCustom": {"default": 1},
         "intensityDisplayUnit": {"default": 0},
-        "equipment": {"default": [1]},
-        "part": {"default": [0]},
+        "equipment": {"default": [1]}, "part": {"default": [0]},
         "access": {"default": 0},
-        "sourceUrl": {"default": ""},
-        "videoUrl": {"default": ""},
     }
     _PR_FIELD_MAP: dict[str, dict] = {
+        "id": {}, "name": {}, "sportType": {},
         "type": {"default": 0}, "subType": {"default": 65535},
-        "name": {}, "sportType": {}, "estimatedTime": {},
-        "estimatedValue": {}, "distance": {"default": 0},
-        "duration": {"default": 0}, "exerciseNum": {"default": 1},
-        "hybridTotalSets": {}, "totalSets": {},
-        "trainingLoad": {}, "exercises": {},
-        "referExercise": {},
-        "overview": {"default": ""},
-        "sourceUrl": {"default": ""},
+        "totalSets": {"default": 1}, "hybridTotalSets": {"default": 0},
+        "estimatedTime": {"default": 3600}, "estimatedValue": {"default": 0},
+        "distance": {"default": 0}, "duration": {"default": 0},
+        "trainingLoad": {"default": 0}, "exerciseNum": {"default": 1},
+        "exercises": {}, "referExercise": {"default": {}},
+        "overview": {"default": ""}, "sourceUrl": {"default": ""},
+        "createTimestamp": {}, "deleted": {"default": 0},
+        "status": {"default": 1}, "simple": {"default": 0},
+        "pbVersion": {"default": 2}, "star": {"default": 0},
+        "pitch": {"default": 0}, "elevGain": {"default": 0},
+        "essence": {"default": 0}, "originEssence": {"default": 0},
+        "headPic": {"default": ""},
+        "distanceDisplayUnit": {"default": 0},
+        "estimatedDistance": {"default": 0}, "estimatedType": {"default": 0},
+        "isTargetTypeConsistent": {"default": 1},
+        "nickname": {"default": ""}, "sex": {"default": 0},
+        "targetType": {"default": 2}, "targetValue": {"default": 3600},
+        "thirdPartyId": {"default": "0"},
     }
 
     clean_exs: list[dict] = []
@@ -1924,12 +1904,17 @@ async def schedule_workout(
         schedule_body = resp.json()
 
     raw_data = schedule_body.get("data") or {}
+    plan_id = raw_data.get("id", "")
     try:
         id_in_plan = int(raw_data.get("maxIdInPlan", 0)) + 1
     except (TypeError, ValueError):
         id_in_plan = 1
 
     program["idInPlan"] = id_in_plan
+    program["planId"] = plan_id
+    program["planIdIndex"] = id_in_plan
+    program["userId"] = auth.user_id
+    program["authorId"] = raw_data.get("authorId", 0)
 
     payload = {
         "entities": [{
@@ -2296,8 +2281,8 @@ async def fetch_daily_health(
     Covers data that is NOT available via the Training Hub web API:
       - steps (dataType=3)
       - calories (dataType=1)
-      - stress — avg level + duration (dataType=22)
       - sleep stages — deep/light/REM/awake (dataType=5)
+      - stress — avg level + duration (dataType=22)
 
     All four data types are fetched in a single API call.
 
@@ -2551,21 +2536,25 @@ async def import_training_program(
         copy_path = ENDPOINTS["workout_copy"]
 
     async with httpx.AsyncClient(timeout=30) as client:
-        # Step 1: fetch program detail (GET with query params)
-        detail_params = {"id": linked_id, "region": region_id}
-        if category != "plan":
-            detail_params["supportRestExercise"] = 1
+        # Step 1: fetch program detail — try regions 1-3
+        detail_data = None
+        for rid in (region_id, 1, 2, 3):
+            detail_params = {"id": linked_id, "region": rid}
+            if category != "plan":
+                detail_params["supportRestExercise"] = 1
+            resp = await client.get(
+                f"{base}{detail_path}",
+                params=detail_params,
+                headers=_auth_headers(auth),
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            if body.get("result") == "0000":
+                detail_data = body["data"]
+                break
+        if detail_data is None:
+            _check_response(body, f"{category} detail")  # raises with the last error
 
-        resp = await client.get(
-            f"{base}{detail_path}",
-            params=detail_params,
-            headers=_auth_headers(auth),
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        _check_response(body, f"{category} detail")
-
-        detail_data = body["data"]
         detail_id = detail_data["id"]
 
         # Inject custom name so the imported program has a readable title

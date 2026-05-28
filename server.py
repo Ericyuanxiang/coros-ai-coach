@@ -734,41 +734,88 @@ async def list_planned_activities(
 
 
 # ---------------------------------------------------------------------------
-# Tool: get_training_summary
+# Tool: get_weekly_projection
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def get_training_summary(
-    start_day: str,
-    end_day: str,
-) -> dict:
-    """
-    Get training volume summary from the Coros training calendar.
+async def get_weekly_projection(start_day: str, end_day: str) -> dict:
+    """Get weekly training projection — same data as the Coros app plan view.
 
-    Returns aggregated totals (duration, training load, session count)
-    over a date range without downloading full workout details.  Uses
-    /training/schedule/querysum — a lighter alternative to the detailed
-    schedule query.
+    Returns per-week load metrics (ATI/CTI/ratio) plus daily workout
+    breakdowns with individual training load estimates.  All from
+    /training/schedule/query.
 
     Parameters
     ----------
     start_day : str
-        Start date in YYYYMMDD format.
+        Start date in YYYYMMDD format (e.g. "20260601").
     end_day : str
         End date in YYYYMMDD format.
 
     Returns
     -------
-    dict with keys: data (the aggregate payload), date_range
+    dict with plan_name, date_range, and weeks list.  Each week:
+      long_term_load, short_term_load, load_ratio (percent)
+      plan_time, plan_distance_km, plan_training_load
+      workouts: list of daily sessions with name, duration, distance_km, training_load
     """
     auth = await _get_auth()
     if auth is None:
         return {"error": "Not authenticated. Set COROS_EMAIL and COROS_PASSWORD in .env or call authenticate_coros."}
     try:
-        data = await _run_with_auth(coros_api.fetch_schedule_summary, auth, start_day, end_day)
+        raw = await _run_with_auth(coros_api.fetch_schedule, auth, start_day, end_day)
+        if not isinstance(raw, dict):
+            return {"error": "Unexpected response format"}
+
+        entities = raw.get("entities", [])
+        programs = raw.get("programs", [])
+
+        # Build program lookup: idInPlan → program
+        prog_by_id: dict[str, dict] = {}
+        for p in programs:
+            pid = str(p.get("idInPlan", ""))
+            prog_by_id[pid] = p
+
+        weeks = []
+        for w in raw.get("weekStages", []):
+            ws = w.get("trainSum", {})
+            week_start = w.get("firstDayInWeek")
+
+            # Daily workouts for this week
+            workouts = []
+            for e in entities:
+                day = e.get("happenDay")
+                if day is None:
+                    continue
+                day_str = str(day)
+                if day_str < str(week_start) or day_str >= str(week_start + 7):
+                    continue
+                pid = str(e.get("planProgramId") or e.get("idInPlan", ""))
+                prog = prog_by_id.get(pid, {})
+                dur_s = prog.get("estimatedTime") or prog.get("duration", 0)
+                workouts.append({
+                    "date": day_str,
+                    "name": prog.get("name", "?"),
+                    "duration_seconds": dur_s,
+                    "distance_km": round(float(prog.get("estimatedDistance", 0)) / 100000, 2),
+                    "training_load": prog.get("trainingLoad", 0),
+                })
+
+            weeks.append({
+                "firstDayInWeek": week_start,
+                "long_term_load": ws.get("actualCti"),
+                "short_term_load": ws.get("actualAti"),
+                "load_ratio": round((ws.get("actualTrainingLoadRatio") or 0) * 100),
+                "plan_time": f"{ws.get('planDuration', 0) // 3600}h{(ws.get('planDuration', 0) % 3600) // 60}m",
+                "plan_distance_km": round(float(ws.get("planDistance", 0)) / 100000, 2),
+                "plan_training_load": ws.get("planTrainingLoad"),
+                "workouts": workouts,
+            })
+
         return {
-            "data": data,
+            "plan_name": raw.get("name"),
             "date_range": f"{start_day} – {end_day}",
+            "weeks": weeks,
         }
     except Exception as exc:
         return _tool_error(exc)
@@ -1421,33 +1468,20 @@ async def analyze_workout(activity_id: str, sport_type: int = 0) -> dict:
         return _tool_error(exc)
 
 
-@mcp.tool()
-async def check_plan(start_day: str, end_day: str) -> dict:
-    """Fetch scheduled training plan summary from Coros.
-
-    Returns projected ATI, CTI, and training load ratio per week.
-
-    Parameters
-    ----------
-    start_day : str
-        Start date in YYYYMMDD format.
-    end_day : str
-        End date in YYYYMMDD format.
-
-    Returns
-    -------
-    dict with raw schedule summary data (weeks, projections, load curves)
-    """
-    auth = await _get_auth()
-    if auth is None:
-        return {"error": "Not authenticated. Set COROS_EMAIL and COROS_PASSWORD in .env or call authenticate_coros."}
-    try:
-        raw = await _run_with_auth(coros_api.fetch_schedule_summary, auth, start_day, end_day)
-        if hasattr(raw, "model_dump"):
-            return raw.model_dump()
-        return raw
-    except Exception as exc:
-        return _tool_error(exc)
+async def _get_plan_detail(auth, plan_id: str) -> dict:
+    """Fetch plan detail, trying regions 1-3 until one works."""
+    import httpx
+    from coros_api import _base_url, _auth_headers, ENDPOINTS
+    base = _base_url(auth.region)
+    for region in (auth.region and [1, 2, 3] or [1, 2, 3]):
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(base + ENDPOINTS["plan_detail"],
+                           params={"id": plan_id, "region": region},
+                           headers=_auth_headers(auth))
+            b = r.json()
+            if b.get("result") == "0000":
+                return b["data"]
+    raise ValueError(f"Plan not found: {plan_id}")
 
 
 @mcp.tool()
@@ -1464,11 +1498,15 @@ async def manage_plan(
         "list" — return all training plans
         "create" — create a new plan (requires plan_data)
         "update" — update an existing plan (requires plan_data with id)
+        "rename" — rename a plan (requires plan_id + plan_data.name)
+        "set_stage" — set periodization stage for a week
+        "tag" — add/delete/update event tags (plan_data: tag_operation, happenDay, name, type, id)
         "delete" — delete a plan by plan_id
     plan_data : dict, optional
-        Full plan JSON (required for create/update).
+        Full plan JSON (required for create/update/rename) or
+        {\"week\": 20260601, \"stage\": \"基础期\"} for set_stage.
     plan_id : str, optional
-        Plan ID (required for delete).
+        Plan ID (required for delete/rename/set_stage).
 
     Returns
     -------
@@ -1478,7 +1516,9 @@ async def manage_plan(
     if auth is None:
         return {"error": "Not authenticated. Set COROS_EMAIL and COROS_PASSWORD in .env or call authenticate_coros."}
 
-    valid_actions = {"list", "create", "update", "delete"}
+    STAGE_NAMES = {"准备期": 1, "基础期": 2, "进展期": 3, "巅峰期": 4, "竞赛期": 5, "过渡期": 6}
+
+    valid_actions = {"list", "create", "update", "rename", "set_stage", "tag", "delete"}
     if action not in valid_actions:
         return {"error": f"Invalid action '{action}'. Use one of: {', '.join(sorted(valid_actions))}."}
 
@@ -1494,6 +1534,88 @@ async def manage_plan(
             if plan_data is None:
                 return {"error": "plan_data is required for update action."}
             return await _run_with_auth(coros_api.update_plan, auth, plan_data)
+        elif action == "rename":
+            if not plan_id or not plan_data or "name" not in plan_data:
+                return {"error": "plan_id and plan_data.name are required for rename action."}
+            detail = await _get_plan_detail(auth, plan_id)
+            detail["name"] = plan_data["name"]
+            updated = await _run_with_auth(coros_api.update_plan, auth, detail)
+            return {"renamed": True, "plan_id": plan_id, "name": plan_data["name"], "result": updated}
+        elif action == "set_stage":
+            if not plan_id or not plan_data or "week" not in plan_data or "stage" not in plan_data:
+                return {"error": "plan_id, plan_data.week (YYYYMMDD), and plan_data.stage are required."}
+            stage_name = plan_data["stage"]
+            if isinstance(stage_name, str):
+                stage_num = STAGE_NAMES.get(stage_name)
+                if stage_num is None:
+                    return {"error": f"Unknown stage '{stage_name}'. Use: {', '.join(STAGE_NAMES.keys())}"}
+            else:
+                stage_num = int(stage_name)
+            detail = await _get_plan_detail(auth, plan_id)
+            if not detail.get("weekStages"):
+                detail["weekStages"] = []
+            found = False
+            for w in detail["weekStages"]:
+                if w.get("firstDayInWeek") == plan_data["week"]:
+                    w["stage"] = stage_num
+                    found = True
+                    break
+            if not found:
+                detail["weekStages"].append({
+                    "firstDayInWeek": plan_data["week"],
+                    "stage": stage_num,
+                    "planId": plan_id,
+                })
+            await _run_with_auth(coros_api.update_plan, auth, detail)
+            return {"set_stage": True, "plan_id": plan_id, "week": plan_data["week"], "stage": stage_name}
+        elif action == "tag":
+            if not plan_id or not plan_data:
+                return {"error": "plan_id and plan_data are required for tag action."}
+            tag_op = plan_data.get("tag_operation", "add")
+            op_map = {"add": 1, "update": 2, "delete": 3}
+            op_code = op_map.get(tag_op)
+            if op_code is None:
+                return {"error": f"tag_operation must be one of: add, update, delete. Got: {tag_op}"}
+            tag_payload = {"operation": op_code}
+            if op_code == 3:
+                # Delete: only need id
+                if "id" not in plan_data:
+                    return {"error": "plan_data.id is required for delete tag_operation."}
+                tag_payload["id"] = plan_data["id"]
+            elif op_code == 2:
+                # Update: need id + changed fields
+                if "id" not in plan_data:
+                    return {"error": "plan_data.id is required for update tag_operation."}
+                tag_payload["id"] = plan_data["id"]
+                for f in ("name", "type", "happenDay"):
+                    if f in plan_data:
+                        tag_payload[f] = plan_data[f]
+            else:
+                # Add: need happenDay, name, type
+                for f in ("happenDay", "name", "type"):
+                    if f not in plan_data:
+                        return {"error": f"plan_data.{f} is required for add tag_operation."}
+                tag_payload["planId"] = plan_id
+                tag_payload["happenDay"] = int(plan_data["happenDay"])
+                tag_payload["name"] = plan_data["name"]
+                tag_payload["type"] = int(plan_data["type"])
+            import httpx
+            from coros_api import _base_url, _auth_headers, ENDPOINTS
+            base = _base_url(auth.region)
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.get(base + ENDPOINTS["schedule"],
+                               params={"startDate": "20260101", "endDate": "20270101"},
+                               headers=_auth_headers(auth))
+                sched = r.json()["data"]
+            payload = {"eventTags": [tag_payload], "pbVersion": sched.get("pbVersion", 2)}
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.post(base + ENDPOINTS["schedule_update"], json=payload, headers=_auth_headers(auth))
+                b = r.json()
+                if b.get("result") != "0000":
+                    msg = b.get("message", "unknown")
+                    return {"error": f"Tag operation failed: {msg}"}
+            op_label = {"add": "added", "update": "updated", "delete": "deleted"}
+            return {"event_tag": op_label.get(tag_op, "done"), "operation": tag_op, "plan_id": plan_id}
         elif action == "delete":
             if not plan_id:
                 return {"error": "plan_id is required for delete action."}
