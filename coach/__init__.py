@@ -1,4 +1,10 @@
-"""Coach analysis engine — pure functions, no I/O."""
+"""Coach analysis engine — pure functions, no I/O.
+
+Modules that provide unique value beyond what the Coros app already shows:
+  - recommendation   Decision matrix → what to train today
+  - safety           Multi-signal alerts → injury risk detection
+  - thresholds       All tunable constants in one place
+"""
 
 from statistics import mean
 from typing import Any
@@ -75,21 +81,10 @@ def _format_pace(seconds_per_km: float | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Re-exports — domain functions
+# Public API
 # ---------------------------------------------------------------------------
 
-from .readiness import assess_readiness, determine_overall_status  # noqa: E402
-from .fatigue import assess_fatigue  # noqa: E402
-from .recovery import analyze_hrv_trend, analyze_sleep_trend  # noqa: E402
-from .training import (  # noqa: E402
-    compute_training_status,
-    compute_weekly_comparison,
-    compute_trends,
-    summarize_recent_training,
-    build_data_freshness,
-    analyze_plan_projection,
-)
-from .safety import (  # noqa: E402
+from .safety import (            # noqa: E402
     build_training_guardrails,
     generate_alerts,
     build_evidence_summary,
