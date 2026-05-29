@@ -419,6 +419,10 @@ async def fetch_dashboard_detail(auth: StoredAuth) -> dict:
     return body.get("data", {})
 
 
+# ---------------------------------------------------------------------------
+# Team data  (/team/* + team dashboard)
+# ---------------------------------------------------------------------------
+
 async def fetch_team_list(auth: StoredAuth) -> list[dict]:
     """List all teams the current user belongs to.
 
@@ -688,7 +692,7 @@ async def fetch_training_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Sport types  (/activity/fit/getImportSportList)
+# Sport types & FIT import/export  (/activity/fit/*)
 # ---------------------------------------------------------------------------
 
 async def fetch_sport_types(auth: StoredAuth) -> list[dict]:
@@ -964,7 +968,12 @@ async def fetch_activity_team_query(
     _check_response(body, "team activity query")
     return [_parse_activity(item) for item in body.get("data", {}).get("list", [])]
 
-# sportType=2 = Indoor Cycling (Rollen); intensityType=6 = power in watts
+
+# ---------------------------------------------------------------------------
+# Workout programs  (/training/program/*)
+# ---------------------------------------------------------------------------
+
+# sportType=2 = Indoor Cycling; intensityType=6 = power (watts)
 # targetType=2 = time-based (seconds); exerciseType=2 = cycling block
 
 WORKOUT_SPORT_NAMES: dict[int, str] = {
@@ -1402,6 +1411,10 @@ async def create_run_workout(
     return str(body.get("data", ""))
 
 
+# ---------------------------------------------------------------------------
+# Workout CRUD helpers  (delete)
+# ---------------------------------------------------------------------------
+
 async def delete_workout(auth: StoredAuth, workout_id: str) -> None:
     """Delete a workout program by ID."""
     async with httpx.AsyncClient(timeout=30) as client:
@@ -1415,6 +1428,10 @@ async def delete_workout(auth: StoredAuth, workout_id: str) -> None:
 
     _check_response(body, "workout delete")
 
+
+# ---------------------------------------------------------------------------
+# Training plans  (/training/plan/*)
+# ---------------------------------------------------------------------------
 
 async def delete_plan(auth: StoredAuth, plan_id: str) -> None:
     """Delete a training plan by ID."""
@@ -1479,7 +1496,7 @@ async def update_plan(auth: StoredAuth, plan_data: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Planned activities (training schedule calendar)
+# Training schedule  (/training/schedule/*)
 # ---------------------------------------------------------------------------
 
 async def fetch_schedule(
@@ -1582,6 +1599,10 @@ def _strip_schedule(data: dict) -> dict:
         out["programs"] = [_strip_program(p) for p in out["programs"]]
     return out
 
+
+# ---------------------------------------------------------------------------
+# Strength workout builders
+# ---------------------------------------------------------------------------
 
 async def create_strength_workout(
     auth: StoredAuth,
@@ -1711,6 +1732,10 @@ async def create_strength_workout(
     return str(body.get("data", ""))
 
 
+# ---------------------------------------------------------------------------
+# Program detail helpers  (calculate / detail / update)
+# ---------------------------------------------------------------------------
+
 async def _fetch_raw_workout(auth: StoredAuth, workout_id: str) -> Optional[dict]:
     """Return the raw workout object for a given ID from the workout list."""
     async with httpx.AsyncClient(timeout=30) as client:
@@ -1803,6 +1828,10 @@ async def update_workout(auth: StoredAuth, workout_data: dict) -> dict:
     _check_response(body, "program update")
     return body.get("data", {})
 
+
+# ---------------------------------------------------------------------------
+# Schedule CRUD  (add / remove workouts from calendar)
+# ---------------------------------------------------------------------------
 
 async def schedule_workout(
     auth: StoredAuth,
@@ -1973,6 +2002,10 @@ async def remove_scheduled_workout(
     _check_response(body, "schedule delete")
 
 
+# ---------------------------------------------------------------------------
+# Exercise catalogue  (/training/exercise/query)
+# ---------------------------------------------------------------------------
+
 async def fetch_exercises(auth: StoredAuth, sport_type: int) -> list[dict]:
     """
     Fetch the exercise catalogue for a given sport type.
@@ -1995,6 +2028,10 @@ async def fetch_exercises(auth: StoredAuth, sport_type: int) -> list[dict]:
 
     return body.get("data", []) or []
 
+
+# ---------------------------------------------------------------------------
+# Account  (/account/*)
+# ---------------------------------------------------------------------------
 
 async def fetch_user_profile(auth: StoredAuth) -> dict:
     """Fetch full user profile from Coros /account/query.
@@ -2582,19 +2619,5 @@ async def import_training_program(
         "total_exercises": imported.get("exerciseNum") if imported.get("exerciseNum") is not None else len(imported.get("exercises", [])),
         "estimated_time_s": imported.get("estimatedTime"),
     }
-
-
-# ---------------------------------------------------------------------------
-# Coach briefing orchestrator
-# ---------------------------------------------------------------------------
-
-import sys
-
-async def _fetch_with_fallback(coro, fallback: any, label: str = "") -> any:
-    try:
-        return await coro
-    except Exception as e:
-        print(f"[coach] Warning: {label} fetch failed ({e}), using fallback", file=sys.stderr)
-        return fallback
 
 
