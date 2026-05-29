@@ -50,6 +50,43 @@ MAX_CONSECUTIVE_HARD = 2  # quality + long count as "hard"
 MIN_EASY_AFTER_HARD = 1
 
 
+def _make_template(day_type: str, target_tl: int) -> str:
+    """Generate a structured workout name when no library match is found."""
+    templates = {
+        "recovery": [
+            (40, "恢复跑 30min (Z1)"),
+            (55, "轻松跑 40min (Z1-Z2)"),
+            (65, "基础跑 45min (Z2 下限)"),
+        ],
+        "easy": [
+            (70, "轻松跑 45min (Z2)"),
+            (90, "基础跑 60min (Z2)"),
+            (110, "耐力跑 75min (Z2)"),
+        ],
+        "quality": [
+            (100, "节奏跑 40min (Z3)"),
+            (120, "间歇跑 8×400m (Z4-Z5)"),
+            (140, "VO2max 间歇 5×800m (Z5)"),
+            (160, "阶梯间歇 10km (Z4-Z5)"),
+        ],
+        "long": [
+            (120, "长距离 80min (Z2)"),
+            (150, "LSD 100min (Z2)"),
+            (180, "长距离 120min (Z2)"),
+            (210, "超长距离 150min (Z2)"),
+        ],
+    }
+    options = templates.get(day_type, [(50, "自定义训练")])
+    best = options[0][1]
+    best_diff = float("inf")
+    for tl, name in options:
+        diff = abs(tl - target_tl)
+        if diff < best_diff:
+            best_diff = diff
+            best = name
+    return best
+
+
 async def run(auth, start_day: str, phase: str = "base",
              auto_schedule: bool = False) -> dict:
     """Generate a week-long training plan.
@@ -231,8 +268,9 @@ async def run(auth, start_day: str, phase: str = "base",
             day["linked_id"] = best["linked_id"]
             day["imported_id"] = best["id"]
         else:
-            day["workout_name"] = "手动安排"
+            day["workout_name"] = _make_template(day["type"], day["target_tl"])
             day["workout_tl"] = day["target_tl"]
+            day["custom"] = True
 
     # ── Step 6: Safety check ──
     safety_checks = []
