@@ -50,7 +50,8 @@ MAX_CONSECUTIVE_HARD = 2  # quality + long count as "hard"
 MIN_EASY_AFTER_HARD = 1
 
 
-async def run(auth, start_day: str, phase: str = "base") -> dict:
+async def run(auth, start_day: str, phase: str = "base",
+             auto_schedule: bool = False) -> dict:
     """Generate a week-long training plan.
 
     Parameters
@@ -239,7 +240,36 @@ async def run(auth, start_day: str, phase: str = "base") -> dict:
                 hard_days[i + 2]["dow"] - hard_days[i + 1]["dow"] == 1):
             safety_checks.append("连续 3 天高强度")
 
-    # ── Step 7: Return plan ──
+    # ── Step 7: Optionally schedule + verify projection ──
+    projection = None
+    if auto_schedule:
+        from coros_api import schedule_workout
+        for day in daily_plan:
+            if day.get("imported_id") and day["target_tl"] > 0:
+                try:
+                    await schedule_workout(auth, day["imported_id"], day["date"], 1)
+                    day["scheduled"] = True
+                except Exception:
+                    day["scheduled"] = False
+
+        # Fetch weekly projection
+        try:
+            end_day = (start_date + timedelta(days=6)).strftime("%Y%m%d")
+            sched = await fetch_schedule(auth, start_day, end_day)
+            weeks = sched.get("weekStages", [])
+            if weeks:
+                ws = weeks[0].get("trainSum", {})
+                projection = {
+                    "long_term_load": ws.get("actualCti"),
+                    "short_term_load": ws.get("actualAti"),
+                    "load_ratio": round((ws.get("actualTrainingLoadRatio") or 0) * 100),
+                    "plan_time": f"{ws.get('planDuration', 0) // 3600}h{(ws.get('planDuration', 0) % 3600) // 60}m",
+                    "plan_training_load": ws.get("planTrainingLoad"),
+                }
+        except Exception:
+            pass
+
+    # ── Step 8: Return plan ──
     return {
         "week_start": start_day,
         "phase": phase,
@@ -249,5 +279,6 @@ async def run(auth, start_day: str, phase: str = "base") -> dict:
         "total_planned_tl": total_planned_tl,
         "daily_plan": daily_plan,
         "safety_checks": safety_checks,
+        "projection": projection,
         "status": "review" if safety_checks else "ready",
     }
