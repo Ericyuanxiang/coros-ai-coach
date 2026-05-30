@@ -14,10 +14,11 @@ LOAD_RATIO_DANGER = 1.5
 LOAD_RATIO_WARNING = 1.3
 
 PHASE_BOUNDS = {
-    "base":  {"quality": (0, 20),  "long": (20, 35), "recovery": (5, 15), "rest_days": (1, 3)},
-    "build": {"quality": (20, 35), "long": (25, 40), "recovery": (5, 15), "rest_days": (1, 2)},
-    "peak":  {"quality": (20, 35), "long": (30, 45), "recovery": (5, 15), "rest_days": (1, 3)},
-    "taper": {"quality": (15, 25), "long": (15, 30), "recovery": (5, 15), "rest_days": (2, 4)},
+    # quality + long = hard, recovery + easy = aerobic. LSD is aerobic (Z2).
+    "base":  {"quality": (0, 20),  "long": (20, 35), "recovery": (5, 15), "easy_min": 15, "rest_days": (1, 3)},
+    "build": {"quality": (20, 30), "long": (25, 35), "recovery": (5, 15), "easy_min": 10, "rest_days": (1, 2)},
+    "peak":  {"quality": (20, 30), "long": (30, 45), "recovery": (5, 15), "easy_min": 10, "rest_days": (1, 3)},
+    "taper": {"quality": (15, 25), "long": (15, 30), "recovery": (5, 15), "easy_min": 10, "rest_days": (2, 4)},
 }
 
 RULES = [
@@ -203,6 +204,10 @@ async def run(auth, start_day: str, phase: str = "base",
             lo, hi = bounds.get("recovery", (5, 15))
             if pct > hi:
                 warnings.append(f"{day['date']}: recovery {pct}% 偏重, 建议 ≤{hi}%")
+        elif tp == "easy":
+            lo = bounds.get("easy_min", 10)
+            if pct < lo:
+                warnings.append(f"{day['date']}: easy {pct}% 偏低, 建议 ≥{lo}%")
 
     # Advisory (best practice, not safety)
     if daily_plan[0].get("type") not in ("recovery", "rest"):
