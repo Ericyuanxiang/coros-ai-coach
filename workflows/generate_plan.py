@@ -132,13 +132,18 @@ async def run(auth, start_day: str, phase: str = "base",
                 "daily_plan": {
                     "type": "list[7 days]",
                     "format": '{"date": "YYYYMMDD", "type": "rest|recovery|easy|quality|long", "tl_pct": int}',
-                    "hint": "AI 完全自主分配每天的类型和百分比, 只需遵守 rules",
+                    "hint": "AI 自定类型+百分比, 遵守 rules. 记住: LSD 练有氧, 间歇练无氧 — 相同 TL 完全不同效果, 类型匹配必须准确",
                     "phase_guide": {
                         "base":  "1 次强度/周, 长距离 ~30%, 侧重 Z2 积累",
                         "build": "2 次强度/周, 长距离 ~30%, 质量课比例增加",
                         "peak":  "2 次强度/周, 长距离 ~40%, 最大质量刺激",
                         "taper": "1 次强度/周, 长距离 ~25%, 总量减至正常 70%",
                     },
+                },
+                "workout_picks": {
+                    "type": "dict[date, {linked_id, title}]",
+                    "from": "context.catalog — 按 type 关键词选课: recovery=恢复, easy=基础训练/MAF, quality=间歇/VO2max/节奏, long=LSD/长距离",
+                    "hint": "类型匹配优先于 TL 匹配 — 间歇练无氧, LSD 练有氧, 效果不同不能互换",
                 },
             },
             "context": {
