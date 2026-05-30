@@ -67,6 +67,13 @@ async def run(auth, start_day: str, phase: str = "base",
     ati_7d_ago = daily_sorted[min(6, len(daily_sorted)-1)].get("ati", 0) if len(daily_sorted) > 6 else None
     ati_14d_ago = daily_sorted[min(13, len(daily_sorted)-1)].get("ati", 0) if len(daily_sorted) > 13 else None
 
+    # Recent activity context
+    train_days_7d = sum(1 for r in daily_sorted[:7] if r.get("training_load", 0) or 0 > 0)
+    last_train_day = next((r.get("date") for r in daily_sorted if r.get("training_load", 0) or 0 > 0), None)
+    latest_hrv = latest.get("avg_sleep_hrv")
+    hrv_baseline = latest.get("baseline")
+    hrv_deviation = round((latest_hrv - hrv_baseline) / hrv_baseline * 100, 1) if (latest_hrv and hrv_baseline) else None
+
     # Step 2: Coros TL recommendation
     week_list = sorted(analysis.get("week_list", []),
                        key=lambda w: w.get("firstDayOfWeek", 0), reverse=True)
@@ -129,7 +136,10 @@ async def run(auth, start_day: str, phase: str = "base",
                 "state": {"load_ratio": current_ratio, "ati": current_ati,
                           "cti": current_cti_val, "tired_rate": current_tired_rate,
                           "fatigue_state": current_fatigue_state,
-                          "ati_7d_ago": ati_7d_ago, "ati_14d_ago": ati_14d_ago},
+                          "ati_7d_ago": ati_7d_ago, "ati_14d_ago": ati_14d_ago,
+                          "train_days_7d": train_days_7d, "last_train_day": last_train_day,
+                          "hrv": latest_hrv, "hrv_baseline": hrv_baseline,
+                          "hrv_deviation": hrv_deviation},
                 "catalog": catalog_summary,
                 "rules": RULES,
             },
