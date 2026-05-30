@@ -18,22 +18,22 @@ DEFAULT_WEEK = {
 }
 
 PHASE_TEMPLATES = {
-    # Weekly TL distribution — must sum to ~100%
+    # Sunday (dow=6) always rest.  Distributions sum to ~100%.
     "base": {
-        0: ("recovery", 0.10), 1: ("easy", 0.20), 2: ("quality", 0.20),
-        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.25), 6: ("recovery", 0.10),
+        0: ("recovery", 0.15), 1: ("easy", 0.20), 2: ("quality", 0.20),
+        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.30), 6: ("rest", 0),
     },
     "build": {
-        0: ("recovery", 0.10), 1: ("easy", 0.15), 2: ("quality", 0.25),
-        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.25), 6: ("recovery", 0.10),
+        0: ("recovery", 0.15), 1: ("easy", 0.15), 2: ("quality", 0.25),
+        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.30), 6: ("rest", 0),
     },
     "peak": {
         0: ("rest", 0), 1: ("quality", 0.20), 2: ("easy", 0.15),
-        3: ("quality", 0.25), 4: ("rest", 0), 5: ("long", 0.30), 6: ("recovery", 0.10),
+        3: ("quality", 0.25), 4: ("rest", 0), 5: ("long", 0.40), 6: ("rest", 0),
     },
     "taper": {
-        0: ("rest", 0), 1: ("easy", 0.20), 2: ("quality", 0.15),
-        3: ("rest", 0), 4: ("easy", 0.20), 5: ("long", 0.15), 6: ("rest", 0),
+        0: ("rest", 0), 1: ("easy", 0.25), 2: ("quality", 0.20),
+        3: ("rest", 0), 4: ("easy", 0.25), 5: ("long", 0.30), 6: ("rest", 0),
     },
 }
 
