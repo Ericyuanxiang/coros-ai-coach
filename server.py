@@ -103,6 +103,10 @@ async def generate_plan(start_day: str, phase: str = "base",
     Returns Phase 1 framework or Phase 2 result.
     """
     from workflows.generate_plan import run
+    # Normalize date format: accept "2026-06-01", "2026/06/01", etc.
+    start_day = start_day.replace("-", "").replace("/", "").replace(".", "")
+    if len(start_day) != 8 or not start_day.isdigit():
+        return {"error": f"日期格式需要 YYYYMMDD, 例如 '20260601'. 收到: '{start_day}'"}
     auth = await _get_auth()
     if auth is None:
         return {"error": "Not authenticated."}
