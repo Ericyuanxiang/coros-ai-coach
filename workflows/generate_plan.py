@@ -223,27 +223,31 @@ async def run(auth, start_day: str, phase: str = "base",
     if daily_plan[6].get("type") != "rest":
         return {"status": "rejected", "reason": "周日必须是休息日"}
 
-    # ── Validate against phase bounds ──
+    # ── Validate against phase bounds — hard retry, not just warning ──
     bounds = PHASE_BOUNDS.get(phase, PHASE_BOUNDS["base"])
+    bound_violations = []
     for day in daily_plan:
         tp = day.get("type", "")
         pct = day.get("tl_pct", 0) or 0
         if tp == "quality":
             lo, hi = bounds["quality"]
             if pct < lo or pct > hi:
-                warnings.append(f"{day['date']}: quality {pct}% 超出范围 {lo}-{hi}%")
+                bound_violations.append(f"{day['date']}: quality {pct}% 超 {lo}-{hi}%")
         elif tp == "long":
             lo, hi = bounds["long"]
             if pct < lo or pct > hi:
-                warnings.append(f"{day['date']}: long {pct}% 超出范围 {lo}-{hi}%")
+                bound_violations.append(f"{day['date']}: long {pct}% 超 {lo}-{hi}%")
         elif tp == "recovery":
-            lo, hi = bounds.get("recovery", (5, 15))
+            lo, hi = bounds.get("recovery", (5, 12))
             if pct > hi:
-                warnings.append(f"{day['date']}: recovery {pct}% 偏重, 建议 ≤{hi}%")
+                bound_violations.append(f"{day['date']}: recovery {pct}% > 上限 {hi}%")
         elif tp == "easy":
             lo, hi = bounds.get("easy", (10, 20))
             if pct < lo or pct > hi:
-                warnings.append(f"{day['date']}: easy {pct}% 超出范围 {lo}-{hi}%")
+                bound_violations.append(f"{day['date']}: easy {pct}% 超 {lo}-{hi}%")
+    if bound_violations:
+        return {"status": "retry",
+                "reason": f"{len(bound_violations)} 天超出阶段配比: {'; '.join(bound_violations[:3])}"}
 
     # Advisory (best practice, not safety)
     if daily_plan[0].get("type") not in ("recovery", "rest"):
