@@ -106,7 +106,13 @@ async def run(auth, start_day: str, phase: str = "base",
             consecutive_hard = 0
         if consecutive_hard > MAX_CONSECUTIVE_HARD:
             day_type = "easy"
-            tl_pct = int(template.get(1, ("easy", 0.15))[1] * 100)
+            # Use the first easy/recovery day fraction from template as fallback
+            easy_frac = 0.15
+            for _dow, (_dt, _frac) in template.items():
+                if _dt in ("easy", "recovery"):
+                    easy_frac = _frac
+                    break
+            tl_pct = int(easy_frac * 100)
             consecutive_hard = 0
 
         daily_plan.append({
