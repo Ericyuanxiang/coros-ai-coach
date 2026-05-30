@@ -15,7 +15,7 @@ LOAD_RATIO_WARNING = 1.3
 
 PHASE_BOUNDS = {
     # quality + long = hard, recovery + easy + long(Z2) = aerobic
-    "base":  {"quality": (0, 20),  "long": (20, 35), "recovery": (5, 15), "easy_min": 15, "rest_days": (1, 2)},
+    "base":  {"quality": (0, 20),  "long": (20, 35), "recovery": (5, 15), "easy_min": 10, "rest_days": (1, 2)},
     "build": {"quality": (20, 30), "long": (25, 35), "recovery": (5, 15), "easy_min": 10, "rest_days": (1, 2)},
     "peak":  {"quality": (20, 30), "long": (30, 45), "recovery": (5, 15), "easy_min": 10, "rest_days": (1, 2)},
     "taper": {"quality": (15, 25), "long": (15, 30), "recovery": (5, 15), "easy_min": 10, "rest_days": (2, 3)},
