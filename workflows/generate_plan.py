@@ -1,10 +1,10 @@
 """Generate a weekly training plan — AI embedded in the workflow.
 
-Two-phase: Phase 1 builds framework → AI fills decisions → Phase 2 validates + schedules.
+Two-phase: Phase 1 builds framework → AI fills decisions → Phase 2 imports + validates + schedules.
 
 Usage:
   framework = await run(auth, "20260601", "build")
-  # AI fills weekly_tl + workout_picks
+  # AI picks workouts from catalog, fills weekly_tl + picks
   plan = await run(auth, "20260601", "build", ai_decision={...})
 """
 
@@ -45,8 +45,8 @@ async def run(auth, start_day: str, phase: str = "base",
               ai_decision: dict | None = None) -> dict:
     """Generate a weekly training plan.
 
-    Phase 1 (ai_decision=None): return framework for AI to fill
-    Phase 2 (ai_decision provided): validate, schedule, verify
+    Phase 1 (ai_decision=None): return framework + catalog for AI
+    Phase 2 (ai_decision provided): import selected workouts, validate, schedule
     """
     from coros_api import (
         fetch_training_analysis, fetch_training_library,
@@ -113,49 +113,16 @@ async def run(auth, start_day: str, phase: str = "base",
             "type": day_type, "tl_pct": tl_pct,
         })
 
-    # Step 5: Build workout pool
+    # Step 5: Fetch catalog (no import — AI picks from this)
     try:
         catalog = await fetch_training_library("cn", "zh-CN", category="workout", sport_type="run")
     except Exception:
         catalog = []
 
-    pool_ids = [w.linked_id for w in catalog]  # full catalog
-
-    imported: dict[str, dict] = {}
-
-    async def _import_and_calc(linked_id: str, title: str):
-        try:
-            result = await import_training_program(auth, linked_id, "workout", 1, title)
-            raw = await _fetch_raw_workout(auth, result["imported_id"])
-            est = await fetch_program_calculate(auth, raw)
-            return {
-                "linked_id": linked_id,
-                "id": result["imported_id"],
-                "title": title,
-                "tl": est.get("planTrainingLoad", 50),
-                "duration_s": est.get("planDuration", 3600),
-            }
-        except Exception:
-            return None
-
-    # Batch imports to avoid overwhelming the server
-    candidates = [w for w in catalog if w.linked_id in pool_ids]
-    sem = asyncio.Semaphore(5)  # max 5 concurrent imports
-
-    async def _import_limited(w):
-        async with sem:
-            return await _import_and_calc(w.linked_id, w.title)
-
-    tasks = [_import_limited(w) for w in candidates]
-    results = await asyncio.gather(*tasks)
-    for r in results:
-        if r:
-            imported[r["linked_id"]] = r
-
-    workout_pool = [
-        {"id": w["id"], "title": w["title"], "tl": w["tl"],
-         "linked_id": w["linked_id"], "duration_s": w["duration_s"]}
-        for w in imported.values()
+    catalog_summary = [
+        {"linked_id": w.linked_id, "title": w.title,
+         "difficulty": w.difficulties, "sport_types": w.sport_types}
+        for w in catalog
     ]
 
     # Return framework if Phase 1 only
@@ -170,7 +137,7 @@ async def run(auth, start_day: str, phase: str = "base",
             },
             "tl_range": {"min": tl_min, "max": tl_max},
             "daily_plan": daily_plan,
-            "workout_pool": workout_pool,
+            "catalog": catalog_summary,
             "pending": {
                 "weekly_tl": None,
                 "workout_picks": None,
@@ -178,7 +145,7 @@ async def run(auth, start_day: str, phase: str = "base",
         }
 
     # ═══════════════════════════════════════════════
-    # Phase 2: Validate AI decisions → execute
+    # Phase 2: Import selected → validate → schedule
     # ═══════════════════════════════════════════════
 
     weekly_tl = ai_decision.get("weekly_tl")
@@ -194,32 +161,55 @@ async def run(auth, start_day: str, phase: str = "base",
                 "reason": f"TL {weekly_tl} 超出安全上限 {tl_max * LOAD_RATIO_DANGER:.0f}"}
 
     if weekly_tl > tl_max * LOAD_RATIO_WARNING:
-        warnings.append(f"TL {weekly_tl} 在 1.3-1.5 警戒区, 已放行但请确认")
+        warnings.append(f"TL {weekly_tl} 在 1.3-1.5 警戒区")
 
-    # Validate workout total vs weekly target — retry if too far off
-    picked_total = sum(w.get("tl", 0) for w in workout_picks.values())
-    if picked_total > 0 and abs(picked_total - weekly_tl) / weekly_tl > 0.20:
+    # Import only selected workouts, calculate TL
+    imported: dict[str, dict] = {}
+    for day_date, pick in workout_picks.items():
+        linked_id = pick.get("linked_id")
+        if not linked_id:
+            continue
+        try:
+            result = await import_training_program(auth, linked_id, "workout", 1,
+                                                   pick.get("title", "import"))
+            wid = result["imported_id"]
+            raw = await _fetch_raw_workout(auth, wid)
+            est = await fetch_program_calculate(auth, raw)
+            imported[day_date] = {
+                "id": wid,
+                "title": pick.get("title", "?"),
+                "tl": est.get("planTrainingLoad", 50),
+                "duration_s": est.get("planDuration", 3600),
+            }
+        except Exception as e:
+            warnings.append(f"{day_date} 导入失败: {e}")
+
+    if not imported:
+        return {"status": "rejected", "reason": "没有成功导入任何课程"}
+
+    # Validate total vs target
+    picked_total = sum(w["tl"] for w in imported.values())
+    if abs(picked_total - weekly_tl) / weekly_tl > 0.20:
         return {
             "status": "retry",
-            "reason": f"匹配总 TL({picked_total})与目标({weekly_tl})偏差 > 20%, 请调整 weekly_tl 后重试",
+            "reason": f"匹配总 TL({picked_total})与目标({weekly_tl})偏差 > 20%, 请调整后重试",
             "actual_total": picked_total,
             "target": weekly_tl,
+            "warnings": warnings,
         }
 
     # Schedule
     from coros_api import schedule_workout
     scheduled = []
     for day in daily_plan:
-        if day["tl_pct"] <= 0:
-            continue
-        pick = workout_picks.get(day["date"])
-        if pick is None:
+        w = imported.get(day["date"])
+        if w is None:
             continue
         try:
-            await schedule_workout(auth, pick["id"], day["date"], 1)
+            await schedule_workout(auth, w["id"], day["date"], 1)
             scheduled.append({
                 "date": day["date"], "type": day["type"],
-                "title": pick.get("title", "?"), "tl": pick.get("tl", 0),
+                "title": w["title"], "tl": w["tl"],
             })
         except Exception as e:
             warnings.append(f"{day['date']} 排程失败: {e}")
