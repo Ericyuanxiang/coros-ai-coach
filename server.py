@@ -13,37 +13,22 @@ MCP config:
 """
 
 import os
-import time
-import json
 
-import httpx
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
 import coros_api
-from coros_api import TOKEN_TTL_MS
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 mcp = FastMCP("coros-ai-coach")
 
-_auth_cache: tuple[float, object] | None = None  # (expires_at, auth_obj)
-
 
 async def _get_auth():
-    """Return StoredAuth, auto-refreshing if token expired."""
-    global _auth_cache
-    now = time.time() * 1000
-
-    if _auth_cache and _auth_cache[0] > now:
-        return _auth_cache[1]
-
+    """Return StoredAuth. Retry with fresh login if cached token fails."""
     auth = coros_api.get_stored_auth()
     if auth is None:
         auth = await coros_api.try_auto_login()
-
-    if auth:
-        _auth_cache = (now + TOKEN_TTL_MS - 60000, auth)
     return auth
 
 
@@ -124,6 +109,15 @@ async def generate_plan(start_day: str, phase: str = "base",
     try:
         return await run(auth, start_day, phase, ai_decision)
     except Exception as exc:
+        err = str(exc)
+        if "token" in err.lower() or "access" in err.lower():
+            # Token expired — force re-login and retry once
+            auth = await coros_api.try_auto_login()
+            if auth:
+                try:
+                    return await run(auth, start_day, phase, ai_decision)
+                except Exception as exc2:
+                    return _tool_error(exc2)
         return _tool_error(exc)
 
 
