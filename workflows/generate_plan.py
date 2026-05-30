@@ -15,40 +15,44 @@ from datetime import datetime, timedelta
 # AI can override day type/pct within these constraints
 
 def _build_daily_plan(phase: str) -> list[dict]:
-    """Generate a default 7-day plan from rules, not fixed percentages.
+    """Generate a 7-day plan from phase rules. AI can override within constraints.
 
-    Rules:
-      - Saturday = long run (30-40% depending on phase)
-      - Sunday = rest
-      - Wednesday = quality session (20-25%)
-      - Quality count by phase: base=1, build=1, peak=2, taper=1
-      - Hard day (quality/long) must be flanked by easy/recovery/rest
-      - Monday = recovery (after weekend long run)
-      - Friday = rest (before long run)
-      - Tuesday/Thursday = easy (buffers)
+    Phase params:
+      rest_days:      which days are always rest (Sunday + Friday always)
+      quality_count:  1-2 quality sessions/week
+      long_pct:       Saturday long run share
     """
+    phase_cfg = {
+        # rest_extra: additional rest days beyond Fri+Sun
+        "base":  {"rest_extra": [],     "quality": 1, "long_pct": 0.30, "quality_pct": 0.20, "recovery_pct": 0.15},
+        "build": {"rest_extra": [],     "quality": 2, "long_pct": 0.30, "quality_pct": 0.25, "recovery_pct": 0.15},
+        "peak":  {"rest_extra": [0],    "quality": 2, "long_pct": 0.40, "quality_pct": 0.20, "recovery_pct": 0.10},
+        "taper": {"rest_extra": [0],    "quality": 1, "long_pct": 0.25, "quality_pct": 0.15, "recovery_pct": 0.10},
+    }
+    cfg = phase_cfg.get(phase, phase_cfg["base"])
     plan = {}
 
-    # Fixed anchors
-    plan[5] = ("long", {"base": 0.30, "build": 0.30, "peak": 0.40, "taper": 0.30}.get(phase, 0.30))
-    plan[6] = ("rest", 0.0)   # Sunday
-    plan[4] = ("rest", 0.0)   # Friday
-    plan[0] = ("recovery", {"base": 0.15, "build": 0.15, "peak": 0.10, "taper": 0.10}.get(phase, 0.10))
-    plan[3] = ("easy", 0.15)  # Thursday
+    # Always rest
+    for d in [4, 6] + cfg["rest_extra"]:
+        plan[d] = ("rest", 0.0)
 
-    # Quality: 1 or 2 sessions depending on phase
-    quality_count = {"base": 1, "build": 2, "peak": 2, "taper": 1}.get(phase, 1)
-    quality_pct = {"base": 0.20, "build": 0.25, "peak": 0.20, "taper": 0.20}.get(phase, 0.20)
+    # Saturday long
+    plan[5] = ("long", cfg["long_pct"])
 
-    if quality_count == 1:
-        plan[2] = ("quality", quality_pct)  # Wednesday
+    # Quality sessions
+    if cfg["quality"] == 1:
+        plan[2] = ("quality", cfg["quality_pct"])  # Wednesday
     else:
-        plan[1] = ("quality", quality_pct)  # Tuesday
-        plan[3] = ("quality", quality_pct)  # Thursday (隔开，不连排)
+        plan[1] = ("quality", cfg["quality_pct"])  # Tuesday
+        plan[3] = ("quality", cfg["quality_pct"])  # Thursday
 
-    # Easy fills the rest
+    # Monday recovery (if not rest)
+    if 0 not in plan:
+        plan[0] = ("recovery", cfg["recovery_pct"])
+
+    # Remaining days = easy
     remaining = 1.0 - sum(f for _, f in plan.values())
-    easy_days = [d for d in range(7) if d not in plan and d != 6]  # Sunday never easy
+    easy_days = [d for d in range(7) if d not in plan]
     if easy_days:
         each = remaining / len(easy_days)
         for d in easy_days:
