@@ -259,20 +259,31 @@ async def run(auth, start_day: str, phase: str = "base",
     imported: dict[str, dict] = {}
     for day_date, pick in workout_picks.items():
         linked_id = pick.get("linked_id")
-        if not linked_id:
-            continue
+        custom_id = pick.get("id")  # pre-created via create_workout
         try:
-            result = await import_training_program(auth, linked_id, "workout", 1,
-                                                   pick.get("title", "import"))
-            wid = result["imported_id"]
-            raw = await _fetch_raw_workout(auth, wid)
-            est = await fetch_program_calculate(auth, raw)
-            imported[day_date] = {
-                "id": wid,
-                "title": pick.get("title", "?"),
-                "tl": est.get("planTrainingLoad", 50),
-                "duration_s": est.get("planDuration", 3600),
-            }
+            if custom_id:
+                # Already created (e.g., AI used create_workout)
+                raw = await _fetch_raw_workout(auth, custom_id)
+                est = await fetch_program_calculate(auth, raw)
+                imported[day_date] = {
+                    "id": custom_id,
+                    "title": pick.get("title", "?"),
+                    "tl": est.get("planTrainingLoad", 50),
+                    "duration_s": est.get("planDuration", 3600),
+                }
+            elif linked_id:
+                result = await import_training_program(auth, linked_id, "workout", 1,
+                                                       pick.get("title", "import"))
+                raw = await _fetch_raw_workout(auth, result["imported_id"])
+                est = await fetch_program_calculate(auth, raw)
+                imported[day_date] = {
+                    "id": result["imported_id"],
+                    "title": pick.get("title", "?"),
+                    "tl": est.get("planTrainingLoad", 50),
+                    "duration_s": est.get("planDuration", 3600),
+                }
+            else:
+                continue
         except Exception as e:
             warnings.append(f"{day_date} 导入失败: {e}")
 
