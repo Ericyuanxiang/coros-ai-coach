@@ -285,14 +285,23 @@ async def run(auth, start_day: str, phase: str = "base",
     # ── Validate total TL ──
     picked_total = sum(w["tl"] for w in imported.values())
     if abs(picked_total - weekly_tl) / weekly_tl > 0.20 or len(day_overshoots) >= 2:
+        retry_count = ai_decision.get("_retry_count", 0) + 1
+        hint = ("从 catalog 换课重试" if retry_count < 2 else
+                f"已重试 {retry_count} 次, catalog 无合适课, 用 create_workout 自建")
+        reason_parts = [f"总 TL({picked_total})vs 目标({weekly_tl})"]
+        if day_overshoots:
+            reason_parts.append(f"{len(day_overshoots)}门课偏差>30%")
         return {
             "status": "retry",
-            "reason": f"匹配总 TL({picked_total})与目标({weekly_tl})偏差 > 20%",
+            "retry_count": retry_count,
+            "reason": "; ".join(reason_parts),
             "target": weekly_tl,
             "actual_total": picked_total,
             "per_workout_tl": {d: {"title": w["title"], "tl": w["tl"]}
                                for d, w in imported.items()},
+            "day_overshoots": day_overshoots,
             "warnings": warnings,
+            "hint": hint,
         }
 
     # ── Schedule ──
