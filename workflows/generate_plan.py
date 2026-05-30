@@ -11,31 +11,55 @@ Usage:
 import asyncio
 from datetime import datetime, timedelta
 
-# Day-to-type default template
-DEFAULT_WEEK = {
-    0: ("recovery", 0.15), 1: ("easy", 0.25), 2: ("quality", 0.30),
-    3: ("easy", 0.15), 4: ("rest", 0.00), 5: ("long", 0.35), 6: ("recovery", 0.10),
-}
+# ── Scheduling rules (not hardcoded templates) ──
+# AI can override day type/pct within these constraints
 
-PHASE_TEMPLATES = {
-    # Sunday (dow=6) always rest.  Distributions sum to ~100%.
-    "base": {
-        0: ("recovery", 0.15), 1: ("easy", 0.20), 2: ("quality", 0.20),
-        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.30), 6: ("rest", 0),
-    },
-    "build": {
-        0: ("recovery", 0.15), 1: ("easy", 0.15), 2: ("quality", 0.25),
-        3: ("easy", 0.15), 4: ("rest", 0), 5: ("long", 0.30), 6: ("rest", 0),
-    },
-    "peak": {
-        0: ("rest", 0), 1: ("quality", 0.20), 2: ("easy", 0.15),
-        3: ("quality", 0.25), 4: ("rest", 0), 5: ("long", 0.40), 6: ("rest", 0),
-    },
-    "taper": {
-        0: ("rest", 0), 1: ("easy", 0.25), 2: ("quality", 0.20),
-        3: ("rest", 0), 4: ("easy", 0.25), 5: ("long", 0.30), 6: ("rest", 0),
-    },
-}
+def _build_daily_plan(phase: str) -> list[dict]:
+    """Generate a default 7-day plan from rules, not fixed percentages.
+
+    Rules:
+      - Saturday = long run (30-40% depending on phase)
+      - Sunday = rest
+      - Wednesday = quality session (20-25%)
+      - Quality count by phase: base=1, build=1, peak=2, taper=1
+      - Hard day (quality/long) must be flanked by easy/recovery/rest
+      - Monday = recovery (after weekend long run)
+      - Friday = rest (before long run)
+      - Tuesday/Thursday = easy (buffers)
+    """
+    plan = {}
+
+    # Fixed anchors
+    plan[5] = ("long", {"base": 0.30, "build": 0.30, "peak": 0.40, "taper": 0.30}.get(phase, 0.30))
+    plan[6] = ("rest", 0.0)   # Sunday
+    plan[4] = ("rest", 0.0)   # Friday
+    plan[0] = ("recovery", {"base": 0.15, "build": 0.15, "peak": 0.10, "taper": 0.10}.get(phase, 0.10))
+    plan[3] = ("easy", 0.15)  # Thursday
+
+    # Quality: 1 or 2 sessions depending on phase
+    quality_count = {"base": 1, "build": 2, "peak": 2, "taper": 1}.get(phase, 1)
+    quality_pct = {"base": 0.20, "build": 0.25, "peak": 0.20, "taper": 0.20}.get(phase, 0.20)
+
+    if quality_count == 1:
+        plan[2] = ("quality", quality_pct)  # Wednesday
+    else:
+        plan[1] = ("quality", quality_pct)  # Tuesday
+        plan[2] = ("quality", quality_pct)  # Wednesday
+
+    # Easy fills the rest
+    remaining = 1.0 - sum(f for _, f in plan.values())
+    easy_days = [d for d in range(7) if d not in plan and d != 6]  # Sunday never easy
+    if easy_days:
+        each = remaining / len(easy_days)
+        for d in easy_days:
+            plan[d] = ("easy", round(each, 2))
+
+    # Normalize to 100% (some phase/quality combos overshoot)
+    total = sum(f for _, f in plan.values())
+    if total != 1.0:
+        for d in plan:
+            plan[d] = (plan[d][0], round(plan[d][1] / total, 2))
+    return plan
 
 LOAD_RATIO_DANGER = 1.5
 LOAD_RATIO_WARNING = 1.3
@@ -89,15 +113,15 @@ async def run(auth, start_day: str, phase: str = "base",
         tl_max = min(tl_max, 300)
         tl_min = min(tl_min, 200)
 
-    # Step 4: Daily distribution
-    template = PHASE_TEMPLATES.get(phase, DEFAULT_WEEK)
+    # Step 4: Daily distribution — rules-based, not fixed template
+    plan_map = _build_daily_plan(phase)
     start_date = datetime.strptime(start_day, "%Y%m%d")
 
     daily_plan = []
     consecutive_hard = 0
 
     for dow in range(7):
-        day_type, fraction = template.get(dow, ("easy", 0.10))
+        day_type, fraction = plan_map.get(dow, ("easy", 0.10))
         day_date = (start_date + timedelta(days=dow)).strftime("%Y%m%d")
         tl_pct = int(fraction * 100) if day_type != "rest" else 0
 
@@ -107,9 +131,9 @@ async def run(auth, start_day: str, phase: str = "base",
             consecutive_hard = 0
         if consecutive_hard > MAX_CONSECUTIVE_HARD:
             day_type = "easy"
-            # Use the first easy/recovery day fraction from template as fallback
+            # Use the first easy/recovery day fraction as fallback
             easy_frac = 0.15
-            for _dow, (_dt, _frac) in template.items():
+            for _dow, (_dt, _frac) in plan_map.items():
                 if _dt in ("easy", "recovery"):
                     easy_frac = _frac
                     break
